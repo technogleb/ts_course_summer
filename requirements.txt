@@ -1,0 +1,8 @@
+jupyter
+pandas
+sklearn
+numpy
+matplotlib
+statsmodels
+plotly==3.9.0
+monthdelta
