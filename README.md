@@ -21,3 +21,6 @@
 `virtualenv -p python3.7 .env` `source .env/bin/activate`
 * держать актуальным окружение  
 `pip install -r requirements.txt`
+* чтобы были доступны импорты  
+*nix: `export PYTHONPATH=$PYTHONPATH:~/ts_course_summer`  
+win: `set PYTHONPATH=%PYTHONPATH%;C:\ts_course_summer`
