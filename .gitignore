@@ -106,3 +106,6 @@ venv.bak/
 # idea
 .idea/*
 .DS_Store
+
+# local
+homeworks/
