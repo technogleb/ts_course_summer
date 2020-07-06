@@ -4,9 +4,15 @@ import numpy as np
 import isodate
 from copy import deepcopy
 
+from monthdelta import monthdelta
+
 
 def get_timedelta_from_granularity(granularity: str):
     datetime_interval = isodate.parse_duration(granularity)
+    if isinstance(datetime_interval, isodate.duration.Duration):
+        years, months = datetime_interval.years, datetime_interval.months
+        total_months = int(years * 12 + months)
+        datetime_interval = monthdelta(months=total_months)
     return datetime_interval
 
 
@@ -90,11 +96,8 @@ class TimeSeriesPredictor:
         ts = deepcopy(ts_lags)
         for _ in range(n_steps):
             next_row = self.generate_next_row(ts)
-            next_row = self.enrich(next_row)
             next_timestamp = next_row.index[-1]
-            # print(next_timestamp)
             value = self.model.predict(next_row)[0]
-            # print(value)
             predict[next_timestamp] = value
             ts[next_timestamp] = value
         return pd.Series(predict)
