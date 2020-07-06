@@ -23,6 +23,7 @@ class TimeSeriesPredictor:
             num_lags: int,
             Model,
             mappers: Dict[str, Callable] = {},
+            sigma: float = 2.3,
             *args, **kwargs
     ):
 
@@ -31,6 +32,8 @@ class TimeSeriesPredictor:
         self.model = Model(*args, **kwargs)
         self.mappers = mappers
         self.fitted = False
+        self.sigma = sigma
+        self.std = None
 
     def transform_into_matrix(self, ts: pd.Series) -> pd.DataFrame:
         """
@@ -91,6 +94,9 @@ class TimeSeriesPredictor:
         self.fitted = True
 
     def predict_next(self, ts_lags, n_steps=1):
+        if not self.model:
+            raise ValueError('Model is not fitted yet')
+
         predict = {}
 
         ts = deepcopy(ts_lags)
@@ -102,9 +108,17 @@ class TimeSeriesPredictor:
             ts[next_timestamp] = value
         return pd.Series(predict)
 
-    def predict_batch(self, ts_batch: pd.Series):
+    def predict_batch(self, ts: pd.Series, ts_batch: pd.Series = pd.Series()):
+        if not self.model:
+            raise ValueError('Model is not fitted yet')
 
-        pass
+        unite_ts = ts.append(ts_batch)
+        matrix = self.enrich(self.transform_into_matrix(unite_ts))
+
+        data_batch = matrix[-len(ts_batch):]
+        preds = self.model.predict(data_batch.drop('lag_0', axis=1))
+
+        return pd.Series(index=data_batch.index, data=preds)
 
     def generate_next_row(self, ts):
         """
@@ -132,9 +146,51 @@ class TimeSeriesPredictor:
 
         return df
 
+    def fit_statistics(self, ts):
+        preds = self.predict_batch(ts)
+        std = (ts - preds).std()
+        self.std = std
+
+    def get_prediction_intervals(self, y_pred, season=False):
+        if season:
+            std_series = pd.Series(
+                map(lambda x: self.std.get(x.hour), y_pred.index), index=y_pred.index
+            )
+            lower, upper = y_pred - self.sigma * std_series, y_pred + self.sigma * std_series
+        else:
+            lower, upper = y_pred - self.sigma * self.std, y_pred + self.sigma * self.std
+        return lower, upper
+
+    def detect(self, ts_true, ts_pred, season=False):
+        lower, upper = self.get_prediction_intervals(ts_pred, season=season)
+        return ts_true[(ts_true < lower) | (ts_true > upper)]
+
+    def fit_seasonal_statistics(self, ts_train, n_splits=3, period=24):
+        def split(period, n_splits):
+            avg = period // n_splits
+            seq = range(period)
+            out = []
+            last = 0.0
+
+            while last < len(seq):
+                out.append(tuple(seq[int(last):int(last + avg)]))
+                last += avg
+
+            return out
+
+        ranges = split(period, n_splits)
+
+        seasonal_std = {}
+        for range_ in ranges:
+            range_std = ts_train[ts_train.index.map(lambda x: x.hour in range_)].std()
+            for i in range_:
+                seasonal_std[i] = range_std
+
+        self.std = seasonal_std
+
     def set_params(self, **parameters):
         """
-        Delayed
+        Sets params
         """
         self_params = {'num_lags'}
         for parameter, value in parameters.items():
@@ -146,7 +202,7 @@ class TimeSeriesPredictor:
 
     def get_params(self):
         """
-        Delayed
+        Gets params
         """
         params = {
             'num_lags': self.num_lags
